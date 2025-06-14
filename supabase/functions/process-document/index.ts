@@ -3,7 +3,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { OpenAI } from "https://esm.sh/openai@4.47.1";
 import pdf from "npm:pdf-parse@1.1.1";
-import mammoth from "https://deno.land/x/mammoth@v1.0.1/mod.js";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -96,13 +95,10 @@ serve(async (req) => {
       const data = await pdf(new Uint8Array(fileBuffer));
       text = data.text;
     } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') { // DOCX
-      try {
-        const result = await mammoth.extractRawText({ arrayBuffer: fileBuffer });
-        text = result.value;
-      } catch (mammothError) {
-        console.warn('Failed to process DOCX with mammoth, skipping:', mammothError);
-        return new Response(JSON.stringify({ message: 'DOCX processing is temporarily unavailable. Please try converting to PDF or TXT format.' }), { status: 415, headers: corsHeaders });
-      }
+      console.warn('DOCX processing is currently not supported in this environment');
+      return new Response(JSON.stringify({ 
+        message: 'DOCX processing is currently not supported. Please convert your document to PDF or TXT format and upload again.' 
+      }), { status: 415, headers: corsHeaders });
     } else if (fileType && fileType.startsWith('text/')) { // TXT
       text = new TextDecoder().decode(fileBuffer);
     } else {
