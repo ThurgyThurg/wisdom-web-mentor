@@ -11,6 +11,7 @@ import Settings from "./pages/Settings";
 import Notes from "./pages/Notes";
 import Tasks from "./pages/Tasks";
 import LearningPlans from "./pages/LearningPlans";
+import Agents from "./pages/Agents";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/notes" element={<Notes />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/learning-plans" element={<LearningPlans />} />
+            <Route path="/agents" element={<Agents />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
