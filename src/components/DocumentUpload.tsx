@@ -15,10 +15,7 @@ interface UploadedDocument {
   id: string;
   title: string;
   file_path: string;
-  metadata: {
-    file_type?: string;
-    file_size?: number;
-  };
+  metadata: any; // Using any to match Supabase Json type
   ai_summary?: string;
   created_at: string;
 }
@@ -87,13 +84,10 @@ const DocumentUpload = () => {
       const fileName = `${Date.now()}-${file.name}`;
       const filePath = `${user.id}/${fileName}`;
 
+      // Simple upload without onUploadProgress since it's not supported
       const { error: uploadError } = await supabase.storage
         .from('learning_resources')
-        .upload(filePath, file, {
-          onUploadProgress: (progress) => {
-            setUploadProgress((progress.loaded / progress.total) * 50); // 50% for upload
-          }
-        });
+        .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
