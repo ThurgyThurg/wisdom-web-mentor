@@ -117,6 +117,8 @@ const ResourceUpload = ({ isOpen, onClose, onUploadComplete }: ResourceUploadPro
         const { error: embeddingError } = await supabase.functions.invoke('process-document', {
           body: { 
             resourceId: data.id,
+            fileName: file.name,
+            fileType: file.type,
           }
         });
 
