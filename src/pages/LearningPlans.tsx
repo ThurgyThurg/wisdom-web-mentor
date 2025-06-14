@@ -62,7 +62,7 @@ const LearningPlans = () => {
       return;
     }
 
-    setPlans(data || []);
+    setPlans((data as LearningPlan[]) || []);
   };
 
   const handleCreatePlan = async () => {

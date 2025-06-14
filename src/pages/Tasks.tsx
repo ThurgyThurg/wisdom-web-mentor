@@ -62,15 +62,17 @@ const Tasks = () => {
       return;
     }
 
+    const tasksData: Task[] = (data as Task[]) || [];
+
     // Organize tasks with subtasks
     const taskMap = new Map<string, Task>();
     const rootTasks: Task[] = [];
 
-    data?.forEach(task => {
+    tasksData.forEach(task => {
       taskMap.set(task.id, { ...task, subtasks: [] });
     });
 
-    data?.forEach(task => {
+    tasksData.forEach(task => {
       if (task.parent_task_id) {
         const parent = taskMap.get(task.parent_task_id);
         if (parent) {
