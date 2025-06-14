@@ -87,8 +87,19 @@ const ResourceUpload = ({ isOpen, onClose, onUploadComplete }: ResourceUploadPro
       if (uploadType === 'link') {
         resourceData.content_url = url;
       } else if (file) {
-        // For now, just store file info in metadata - file upload would need storage bucket
-        resourceData.file_path = file.name;
+        const filePath = `${user.id}/${file.name.replace(/\s/g, '_')}`;
+        const { error: uploadError } = await supabase.storage
+          .from('learning_resources')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw new Error(`Storage Error: ${uploadError.message}`);
+        }
+
+        resourceData.file_path = filePath;
         resourceData.metadata.file_size = file.size;
         resourceData.metadata.file_type = file.type;
       }
@@ -101,35 +112,37 @@ const ResourceUpload = ({ isOpen, onClose, onUploadComplete }: ResourceUploadPro
 
       if (error) throw error;
 
-      // If it's a PDF file, trigger embedding processing
-      if (file && file.type === 'application/pdf') {
-        // Call edge function to process PDF and create embeddings
+      // If a file was uploaded, trigger embedding processing
+      if (file && data) {
         const { error: embeddingError } = await supabase.functions.invoke('process-document', {
           body: { 
             resourceId: data.id,
-            fileName: file.name,
-            fileType: file.type
           }
         });
 
         if (embeddingError) {
           console.error('Error processing document for embeddings:', embeddingError);
+          toast({
+            title: "Upload successful, but processing failed.",
+            description: "Your document was saved, but the AI may not be able to use it. You can try re-uploading.",
+            variant: "destructive",
+          });
         }
       }
 
       toast({
         title: "Success",
-        description: "Resource uploaded successfully",
+        description: "Resource uploaded and is being processed.",
       });
 
       onUploadComplete?.();
       onClose();
       resetForm();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading resource:', error);
       toast({
         title: "Error",
-        description: "Failed to upload resource",
+        description: error.message || "Failed to upload resource",
         variant: "destructive",
       });
     } finally {
