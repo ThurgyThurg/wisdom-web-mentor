@@ -15,6 +15,7 @@ import { ToastAction } from './ui/toast';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  agentType?: string;
 }
 
 const agentOptions = [
@@ -31,7 +32,6 @@ const AgentChat = () => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [agentType, setAgentType] = useState('general_assistant');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -55,7 +55,6 @@ const AgentChat = () => {
       const { data, error } = await supabase.functions.invoke('ai-agent-processor', {
         body: {
           message: input,
-          agentType,
           userId: user.id,
           conversationId,
         },
@@ -63,8 +62,8 @@ const AgentChat = () => {
 
       if (error) throw error;
       
-      const { response, actionTaken, conversationId: newConversationId } = data;
-      const assistantMessage: Message = { role: 'assistant', content: response };
+      const { response, actionTaken, conversationId: newConversationId, agentType } = data;
+      const assistantMessage: Message = { role: 'assistant', content: response, agentType };
       setMessages(prev => [...prev, assistantMessage]);
       setConversationId(newConversationId);
 
@@ -122,18 +121,35 @@ const AgentChat = () => {
         <CardTitle className="text-green-400 flex items-center gap-2">
           <Bot /> AGENTIC AI SYSTEM
         </CardTitle>
-        <CardDescription className="text-green-600">Select an agent and start a conversation.</CardDescription>
+        <CardDescription className="text-green-600">Your intelligent assistant is ready. Start a conversation.</CardDescription>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col p-0">
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((message, index) => (
               <div key={index} className={`flex items-start gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}>
-                {message.role === 'assistant' && <Bot className="w-6 h-6 text-blue-400 flex-shrink-0" />}
-                <div className={`p-3 rounded-lg max-w-lg ${message.role === 'user' ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-green-400'}`}>
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                </div>
-                {message.role === 'user' && <User className="w-6 h-6 text-green-400 flex-shrink-0" />}
+                {message.role === 'assistant' && (
+                  <>
+                    <Bot className="w-6 h-6 text-blue-400 flex-shrink-0" />
+                    <div className="p-3 rounded-lg max-w-lg bg-gray-800 text-green-400">
+                      {message.agentType && (
+                        <div className="text-xs text-blue-300 font-mono mb-2 border-b border-blue-900 pb-1 flex items-center gap-2">
+                          <span>Handled by:</span>
+                          <span className="font-bold">{agentOptions.find(o => o.value === message.agentType)?.label || message.agentType}</span>
+                        </div>
+                      )}
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                  </>
+                )}
+                 {message.role === 'user' && (
+                  <>
+                    <div className={`p-3 rounded-lg max-w-lg bg-green-900 text-green-300`}>
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    </div>
+                    <User className="w-6 h-6 text-green-400 flex-shrink-0" />
+                  </>
+                 )}
               </div>
             ))}
             {isLoading && (
@@ -149,16 +165,6 @@ const AgentChat = () => {
         </ScrollArea>
         <div className="border-t border-green-700 p-4">
           <form onSubmit={handleSendMessage} className="flex gap-4">
-            <Select value={agentType} onValueChange={setAgentType}>
-              <SelectTrigger className="w-64 bg-black border-green-500 text-green-400 font-mono">
-                <SelectValue placeholder="Select an agent" />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-green-500">
-                {agentOptions.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label.toUpperCase()}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}

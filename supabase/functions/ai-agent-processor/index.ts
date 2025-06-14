@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -7,13 +6,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const agentList = [
+  { value: 'general_assistant', label: 'General Assistant', description: 'For general questions, conversation, and advice.' },
+  { value: 'research', label: 'Research Assistant', description: 'For requests that involve finding and summarizing information.' },
+  { value: 'task_breakdown', label: 'Task Breakdown Specialist', description: 'For requests to break down a large goal or task into smaller steps.' },
+  { value: 'learning_plan', label: 'Learning Plan Creator', description: 'For requests to create a learning plan for a specific topic.' },
+  { value: 'note_taker', label: 'Note Taker', description: "For requests to save information as a note. Use this if the user says 'take a note', 'save this', or 'create a note'." },
+];
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { message, agentType, userId, conversationId } = await req.json()
+    const { message, userId, conversationId } = await req.json()
     
     const authHeader = req.headers.get('Authorization')!
     
@@ -44,6 +51,60 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // --- Agent Router Logic ---
+    const routerPrompt = `You are an agent router. Your job is to determine the best agent to handle a user's request. Based on the user's message, select one of the following agents:\n${agentList.map(a => `- '${a.value}': ${a.description}`).join('\n')}\n\nUser message: "${message}"\n\nRespond with ONLY the agent name (e.g., 'task_breakdown').`
+    
+    let agentType = 'general_assistant'; // Default agent
+
+    try {
+      let routerResponseText;
+      if (settings.default_ai_provider === 'openai' && settings.openai_api_key) {
+        const routerResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${settings.openai_api_key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: routerPrompt }],
+            temperature: 0,
+          }),
+        });
+        const routerData = await routerResponse.json();
+        if (!routerResponse.ok) throw new Error(routerData.error?.message || 'Agent Router OpenAI API error');
+        routerResponseText = routerData.choices[0]?.message?.content;
+      } else if (settings.anthropic_api_key) {
+         const routerResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': settings.anthropic_api_key,
+              'Content-Type': 'application/json',
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-3-haiku-20240307', // Use a fast model for routing
+              max_tokens: 50,
+              messages: [{ role: 'user', content: routerPrompt }],
+            }),
+          });
+          const routerData = await routerResponse.json();
+          if (!routerResponse.ok) throw new Error(routerData.error?.message || 'Agent Router Anthropic API error');
+          routerResponseText = routerData.content[0]?.text;
+      }
+
+      if (routerResponseText) {
+        const potentialAgent = routerResponseText.trim().replace(/'/g, '');
+        if (agentList.some(a => a.value === potentialAgent)) {
+          agentType = potentialAgent;
+        }
+      }
+    } catch(e) {
+      console.error("Error in agent router, falling back to general assistant:", e.message);
+      // Fallback to general_assistant is already the default
+    }
+    // --- End Agent Router Logic ---
 
     // Define agent behaviors
     const agentPrompts = {
