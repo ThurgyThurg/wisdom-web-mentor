@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message, agentType, userId } = await req.json()
+    const { message, agentType, userId, conversationId } = await req.json()
     
     const authHeader = req.headers.get('Authorization')!
     
@@ -24,7 +24,7 @@ serve(async (req) => {
     )
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) {
+    if (userError || !user || user.id !== userId) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -40,7 +40,7 @@ serve(async (req) => {
 
     if (!settings?.openai_api_key && !settings?.anthropic_api_key) {
       return new Response(
-        JSON.stringify({ error: 'No AI API key configured' }),
+        JSON.stringify({ error: 'No AI API key configured in settings.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -48,14 +48,27 @@ serve(async (req) => {
     // Define agent behaviors
     const agentPrompts = {
       research: `You are a research assistant. Analyze the user's message and provide detailed research insights. If the user asks for research on a topic, break it down into key areas to investigate and suggest reliable sources.`,
-      task_breakdown: `You are a task breakdown specialist. Take the user's goal or task and break it down into smaller, actionable subtasks. Each subtask should be specific, measurable, and have a clear outcome.`,
+      task_breakdown: `You are a task breakdown specialist. Take the user's goal or task and break it down into smaller, actionable subtasks. Each subtask should be specific, measurable, and have a clear outcome. Respond with a list of tasks.`,
       learning_plan: `You are a learning plan creator. Create comprehensive learning plans based on the user's subject or skill they want to learn. Include modules, timeline, and resources.`,
-      note_taker: `You are a note-taking assistant. Help organize and structure information into clear, searchable notes. Extract key points and create summaries.`,
-      telegram_handler: `You are a Telegram message processor. Analyze incoming messages and determine the appropriate action: create note, research topic, break down task, or general response.`,
+      note_taker: `You are a note-taking assistant. Help organize and structure information into clear, searchable notes. Extract key points and create summaries. Start your response with a title for the note.`,
       general_assistant: `You are a helpful AI assistant focused on learning and productivity. Provide clear, actionable advice and help users achieve their goals.`
     }
 
-    const systemPrompt = agentPrompts[agentType as keyof typeof agentPrompts] || agentPrompts.general_assistant
+    const systemPrompt = agentPrompts[agentType as keyof typeof agentPrompts] || agentPrompts.general_assistant;
+
+    let history: { role: string; content: string }[] = [];
+    if (conversationId) {
+      const { data: convData } = await supabaseClient
+        .from('chat_conversations')
+        .select('messages')
+        .eq('id', conversationId)
+        .single();
+      if (convData && Array.isArray(convData.messages)) {
+        history = convData.messages;
+      }
+    }
+
+    const messagesForLLM = [...history, { role: 'user', content: message }];
 
     let aiResponse
     
@@ -70,15 +83,19 @@ serve(async (req) => {
           model: settings.default_model || 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: message }
+            ...messagesForLLM
           ],
           temperature: 0.7,
         }),
       })
       
       const openaiData = await openaiResponse.json()
+      if (!openaiResponse.ok) throw new Error(openaiData.error?.message || 'OpenAI API error');
       aiResponse = openaiData.choices[0]?.message?.content
     } else if (settings.anthropic_api_key) {
+      // Anthropic does not support system prompts in the same way, prepend it.
+      const anthropicMessages = messagesForLLM.map(m => ({ role: m.role, content: m.content }));
+      
       const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -87,86 +104,76 @@ serve(async (req) => {
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: settings.default_model || 'claude-3-5-sonnet-20241022',
+          model: settings.default_model || 'claude-3-5-sonnet-20240620',
           max_tokens: 1024,
-          messages: [
-            { role: 'user', content: `${systemPrompt}\n\nUser message: ${message}` }
-          ],
+          system: systemPrompt,
+          messages: anthropicMessages,
         }),
       })
       
       const anthropicData = await anthropicResponse.json()
+      if (!anthropicResponse.ok) throw new Error(anthropicData.error?.message || 'Anthropic API error');
       aiResponse = anthropicData.content[0]?.text
     }
 
     if (!aiResponse) {
       throw new Error('No AI response received')
     }
+    
+    // Update conversation history
+    const newUserMessage = { role: 'user', content: message };
+    const newAiMessage = { role: 'assistant', content: aiResponse };
+    const updatedHistory = [...history, newUserMessage, newAiMessage];
+    
+    let currentConversationId = conversationId;
+    if (currentConversationId) {
+      await supabaseClient.from('chat_conversations').update({ messages: updatedHistory, updated_at: new Date().toISOString() }).eq('id', currentConversationId);
+    } else {
+      const { data: newConv } = await supabaseClient.from('chat_conversations').insert({ user_id: user.id, messages: updatedHistory, title: message.substring(0, 50) }).select('id').single();
+      currentConversationId = newConv?.id;
+    }
+
 
     // Process the response based on agent type
     let actionTaken = 'response'
     
     if (agentType === 'note_taker' || message.toLowerCase().includes('save note') || message.toLowerCase().includes('create note')) {
-      // Extract title and content for note creation
       const lines = aiResponse.split('\n').filter(line => line.trim())
       const title = lines[0]?.replace(/^#+\s*/, '') || 'AI Generated Note'
       const content = lines.slice(1).join('\n') || aiResponse
       
       await supabaseClient
         .from('notes')
-        .insert({
-          user_id: user.id,
-          title,
-          content,
-          agent_generated: true,
-          tags: ['ai-generated', agentType]
-        })
+        .insert({ user_id: user.id, title, content, agent_generated: true, tags: ['ai-generated', agentType] })
       
       actionTaken = 'note_created'
     } else if (agentType === 'task_breakdown' || message.toLowerCase().includes('break down') || message.toLowerCase().includes('subtasks')) {
-      // Create tasks from the breakdown
       const tasks = aiResponse.split('\n')
-        .filter(line => line.trim() && (line.includes('•') || line.includes('-') || line.includes('1.') || line.includes('2.')))
+        .filter(line => line.trim() && (line.includes('•') || line.includes('-') || /^\d+\./.test(line)))
         .map(line => line.replace(/^[•\-\d\.]\s*/, '').trim())
         .filter(task => task.length > 0)
       
-      const mainTitle = message.split('\n')[0] || 'AI Generated Task Plan'
+      const mainTitle = message.replace(/break down/i, '').trim() || 'AI Generated Task Plan'
       
-      // Create main task
       const { data: mainTask } = await supabaseClient
         .from('tasks')
-        .insert({
-          user_id: user.id,
-          title: mainTitle,
-          description: 'Task breakdown created by AI',
-          agent_generated: true,
-          priority: 'medium'
-        })
+        .insert({ user_id: user.id, title: mainTitle, description: 'Task breakdown created by AI', agent_generated: true, priority: 'medium' })
         .select()
         .single()
 
-      // Create subtasks
-      for (const task of tasks.slice(0, 10)) { // Limit to 10 subtasks
-        await supabaseClient
-          .from('tasks')
-          .insert({
-            user_id: user.id,
-            title: task,
-            parent_task_id: mainTask?.id,
-            agent_generated: true,
-            priority: 'medium'
-          })
+      if (mainTask && tasks.length > 0) {
+        for (const task of tasks.slice(0, 10)) { // Limit to 10 subtasks
+          await supabaseClient
+            .from('tasks')
+            .insert({ user_id: user.id, title: task, parent_task_id: mainTask.id, agent_generated: true, priority: 'medium' })
+        }
       }
       
       actionTaken = 'tasks_created'
     }
 
     return new Response(
-      JSON.stringify({ 
-        response: aiResponse,
-        actionTaken,
-        agentType
-      }),
+      JSON.stringify({ response: aiResponse, actionTaken, agentType, conversationId: currentConversationId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
