@@ -1,87 +1,137 @@
-
-import { useState } from 'react';
-import { Home, BookOpen, Brain, Upload, BarChart3, Settings, Webhook, Tag } from 'lucide-react';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  Terminal,
+  Home,
+  Settings,
+  BookOpen,
+  StickyNote,
+  CheckSquare,
+  GraduationCap,
+  MessageSquare,
+  Bot,
+  Webhook,
+  Upload,
+  User
+} from 'lucide-react';
 
-const Sidebar = () => {
-  const [activeItem, setActiveItem] = useState('dashboard');
+interface SidebarProps {
+  className?: string;
+}
+
+const Sidebar = ({ className }: SidebarProps) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'resources', label: 'Resources', icon: BookOpen },
-    { id: 'ai-assistant', label: 'AI Assistant', icon: Brain },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'upload', label: 'Upload', icon: Upload },
-    { id: 'webhooks', label: 'N8N Webhooks', icon: Webhook },
+    { 
+      icon: Home, 
+      label: 'DASHBOARD', 
+      path: '/',
+      description: 'Overview & Analytics'
+    },
+    { 
+      icon: BookOpen, 
+      label: 'RESOURCES', 
+      path: '/resources',
+      description: 'Learning Materials'
+    },
+    { 
+      icon: StickyNote, 
+      label: 'NOTES', 
+      path: '/notes',
+      description: 'Knowledge Base'
+    },
+    { 
+      icon: CheckSquare, 
+      label: 'TASKS', 
+      path: '/tasks',
+      description: 'Task Management'
+    },
+    { 
+      icon: GraduationCap, 
+      label: 'LEARNING PLANS', 
+      path: '/learning-plans',
+      description: 'Study Roadmaps'
+    },
+    { 
+      icon: Bot, 
+      label: 'AI AGENTS', 
+      path: '/agents',
+      description: 'AI Assistants'
+    },
+    { 
+      icon: MessageSquare, 
+      label: 'CHAT', 
+      path: '/chat',
+      description: 'AI Conversations'
+    },
+    { 
+      icon: Webhook, 
+      label: 'AUTOMATIONS', 
+      path: '/automations',
+      description: 'N8N Workflows'
+    },
+    { 
+      icon: Settings, 
+      label: 'SETTINGS', 
+      path: '/settings',
+      description: 'System Config'
+    }
   ];
 
-  const categories = [
-    { name: 'AI/ML', count: 8, color: 'bg-green-900 text-green-400 border border-green-500' },
-    { name: 'Web Dev', count: 12, color: 'bg-green-900 text-green-400 border border-green-500' },
-    { name: 'Data Science', count: 6, color: 'bg-green-900 text-green-400 border border-green-500' },
-    { name: 'Design', count: 4, color: 'bg-green-900 text-green-400 border border-green-500' },
-  ];
+  if (!user) {
+    return null;
+  }
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-gray-900 border-r-2 border-green-500 z-30">
-      <div className="p-6">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-            <Brain className="w-6 h-6 text-black" />
+    <div className={cn('pb-12 min-h-screen bg-gray-950 border-r-2 border-green-500', className)}>
+      <div className="space-y-4 py-4">
+        <div className="px-4 py-2">
+          <div className="flex items-center gap-2 mb-6">
+            <Terminal className="w-6 h-6 text-green-500" />
+            <h2 className="text-lg font-bold text-green-400 font-mono">
+              LEARNAI
+            </h2>
           </div>
-          <div>
-            <h2 className="font-bold text-lg text-green-500 font-mono">LearnAI</h2>
-            <p className="text-sm text-green-400 font-mono">Terminal Mode</p>
-          </div>
-        </div>
-
-        <nav className="space-y-2 mb-8">
-          {menuItems.map((item) => (
-            <Button
-              key={item.id}
-              variant={activeItem === item.id ? "default" : "ghost"}
-              className={`w-full justify-start font-mono ${
-                activeItem === item.id 
-                  ? "bg-green-600 text-black hover:bg-green-700 border border-green-500" 
-                  : "text-green-400 hover:text-green-300 hover:bg-gray-800 border border-transparent hover:border-green-500"
-              }`}
-              onClick={() => setActiveItem(item.id)}
-            >
-              <item.icon className="w-4 h-4 mr-3" />
-              {item.label}
-            </Button>
-          ))}
-        </nav>
-
-        <div className="border-t-2 border-green-500 pt-6">
-          <h3 className="text-sm font-semibold text-green-500 mb-4 flex items-center font-mono">
-            <Tag className="w-4 h-4 mr-2" />
-            Categories
-          </h3>
-          <div className="space-y-2">
-            {categories.map((category) => (
-              <div
-                key={category.name}
-                className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer border border-transparent hover:border-green-500"
-              >
-                <span className="text-sm text-green-400 font-mono">{category.name}</span>
-                <Badge className={`text-xs font-mono ${category.color}`}>
-                  {category.count}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="absolute bottom-6 left-6 right-6">
-          <Button variant="ghost" className="w-full justify-start text-green-400 hover:text-green-300 hover:bg-gray-800 font-mono">
-            <Settings className="w-4 h-4 mr-3" />
-            Settings
-          </Button>
+          <ScrollArea className="h-[calc(100vh-8rem)]">
+            <div className="space-y-2">
+              {menuItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                
+                return (
+                  <Button
+                    key={item.path}
+                    variant={isActive ? "default" : "ghost"}
+                    className={cn(
+                      'w-full justify-start h-auto p-3 font-mono text-left',
+                      isActive
+                        ? 'bg-green-600 text-black hover:bg-green-700'
+                        : 'text-green-400 hover:text-green-300 hover:bg-green-900/20'
+                    )}
+                    onClick={() => navigate(item.path)}
+                  >
+                    <Icon className="mr-3 h-5 w-5 flex-shrink-0" />
+                    <div className="flex flex-col items-start">
+                      <span className="font-semibold">{item.label}</span>
+                      <span className="text-xs opacity-70 font-normal">
+                        {item.description}
+                      </span>
+                    </div>
+                  </Button>
+                );
+              })}
+            </div>
+          </ScrollArea>
         </div>
       </div>
-    </aside>
+    </div>
   );
 };
 

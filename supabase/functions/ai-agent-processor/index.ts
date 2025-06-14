@@ -1,0 +1,180 @@
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    const { message, agentType, userId } = await req.json()
+    
+    const authHeader = req.headers.get('Authorization')!
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Get user settings for AI provider
+    const { data: settings } = await supabaseClient
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!settings?.openai_api_key && !settings?.anthropic_api_key) {
+      return new Response(
+        JSON.stringify({ error: 'No AI API key configured' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Define agent behaviors
+    const agentPrompts = {
+      research: `You are a research assistant. Analyze the user's message and provide detailed research insights. If the user asks for research on a topic, break it down into key areas to investigate and suggest reliable sources.`,
+      task_breakdown: `You are a task breakdown specialist. Take the user's goal or task and break it down into smaller, actionable subtasks. Each subtask should be specific, measurable, and have a clear outcome.`,
+      learning_plan: `You are a learning plan creator. Create comprehensive learning plans based on the user's subject or skill they want to learn. Include modules, timeline, and resources.`,
+      note_taker: `You are a note-taking assistant. Help organize and structure information into clear, searchable notes. Extract key points and create summaries.`,
+      telegram_handler: `You are a Telegram message processor. Analyze incoming messages and determine the appropriate action: create note, research topic, break down task, or general response.`,
+      general_assistant: `You are a helpful AI assistant focused on learning and productivity. Provide clear, actionable advice and help users achieve their goals.`
+    }
+
+    const systemPrompt = agentPrompts[agentType as keyof typeof agentPrompts] || agentPrompts.general_assistant
+
+    let aiResponse
+    
+    if (settings.default_ai_provider === 'openai' && settings.openai_api_key) {
+      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${settings.openai_api_key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: settings.default_model || 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
+          ],
+          temperature: 0.7,
+        }),
+      })
+      
+      const openaiData = await openaiResponse.json()
+      aiResponse = openaiData.choices[0]?.message?.content
+    } else if (settings.anthropic_api_key) {
+      const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': settings.anthropic_api_key,
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: settings.default_model || 'claude-3-5-sonnet-20241022',
+          max_tokens: 1024,
+          messages: [
+            { role: 'user', content: `${systemPrompt}\n\nUser message: ${message}` }
+          ],
+        }),
+      })
+      
+      const anthropicData = await anthropicResponse.json()
+      aiResponse = anthropicData.content[0]?.text
+    }
+
+    if (!aiResponse) {
+      throw new Error('No AI response received')
+    }
+
+    // Process the response based on agent type
+    let actionTaken = 'response'
+    
+    if (agentType === 'note_taker' || message.toLowerCase().includes('save note') || message.toLowerCase().includes('create note')) {
+      // Extract title and content for note creation
+      const lines = aiResponse.split('\n').filter(line => line.trim())
+      const title = lines[0]?.replace(/^#+\s*/, '') || 'AI Generated Note'
+      const content = lines.slice(1).join('\n') || aiResponse
+      
+      await supabaseClient
+        .from('notes')
+        .insert({
+          user_id: user.id,
+          title,
+          content,
+          agent_generated: true,
+          tags: ['ai-generated', agentType]
+        })
+      
+      actionTaken = 'note_created'
+    } else if (agentType === 'task_breakdown' || message.toLowerCase().includes('break down') || message.toLowerCase().includes('subtasks')) {
+      // Create tasks from the breakdown
+      const tasks = aiResponse.split('\n')
+        .filter(line => line.trim() && (line.includes('•') || line.includes('-') || line.includes('1.') || line.includes('2.')))
+        .map(line => line.replace(/^[•\-\d\.]\s*/, '').trim())
+        .filter(task => task.length > 0)
+      
+      const mainTitle = message.split('\n')[0] || 'AI Generated Task Plan'
+      
+      // Create main task
+      const { data: mainTask } = await supabaseClient
+        .from('tasks')
+        .insert({
+          user_id: user.id,
+          title: mainTitle,
+          description: 'Task breakdown created by AI',
+          agent_generated: true,
+          priority: 'medium'
+        })
+        .select()
+        .single()
+
+      // Create subtasks
+      for (const task of tasks.slice(0, 10)) { // Limit to 10 subtasks
+        await supabaseClient
+          .from('tasks')
+          .insert({
+            user_id: user.id,
+            title: task,
+            parent_task_id: mainTask?.id,
+            agent_generated: true,
+            priority: 'medium'
+          })
+      }
+      
+      actionTaken = 'tasks_created'
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        response: aiResponse,
+        actionTaken,
+        agentType
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
+  } catch (error) {
+    console.error('Error processing AI agent request:', error)
+    return new Response(
+      JSON.stringify({ error: error.message || 'Failed to process AI agent request' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
