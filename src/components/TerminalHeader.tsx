@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Home, FileText, CheckSquare, BookOpen } from 'lucide-react';
+import { Settings, Home, FileText, CheckSquare, BookOpen, Upload, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const TerminalHeader = () => {
@@ -16,6 +16,14 @@ const TerminalHeader = () => {
             <Link to="/" className="text-green-400 hover:text-green-300 font-mono flex items-center gap-2">
               <Home className="w-4 h-4" />
               CHAT
+            </Link>
+            <Link to="/documents" className="text-green-400 hover:text-green-300 font-mono flex items-center gap-2">
+              <Upload className="w-4 h-4" />
+              DOCUMENTS
+            </Link>
+            <Link to="/agents" className="text-green-400 hover:text-green-300 font-mono flex items-center gap-2">
+              <Bot className="w-4 h-4" />
+              AGENTS
             </Link>
             <Link to="/notes" className="text-green-400 hover:text-green-300 font-mono flex items-center gap-2">
               <FileText className="w-4 h-4" />
