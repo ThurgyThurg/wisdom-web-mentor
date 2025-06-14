@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { X, Upload, FileText, Link, Tag, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -117,8 +116,6 @@ const ResourceUpload = ({ isOpen, onClose, onUploadComplete }: ResourceUploadPro
         const { error: embeddingError } = await supabase.functions.invoke('process-document', {
           body: { 
             resourceId: data.id,
-            fileName: file.name,
-            fileType: file.type,
           }
         });
 
