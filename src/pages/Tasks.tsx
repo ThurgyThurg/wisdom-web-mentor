@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CheckSquare, Plus, Edit3, Trash2, Bot, User, Calendar, ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
 import TerminalHeader from '@/components/TerminalHeader';
+import InteractiveTask from '@/components/InteractiveTask';
 
 interface Task {
   id: string;
@@ -125,6 +125,35 @@ const Tasks = () => {
     }
   };
 
+  const handleTaskToggle = async (taskId: string, completed: boolean) => {
+    const newStatus = completed ? 'completed' : 'pending';
+    
+    const { error } = await supabase
+      .from('tasks')
+      .update({ 
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error updating task status:', error);
+      toast({
+        title: "ERROR",
+        description: "Failed to update task status",
+        variant: "destructive",
+      });
+    } else {
+      fetchTasks();
+      if (completed) {
+        toast({
+          title: "SUCCESS",
+          description: "Task completed! 🎉",
+        });
+      }
+    }
+  };
+
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     const { error } = await supabase
       .from('tasks')
@@ -204,9 +233,25 @@ const Tasks = () => {
   });
 
   const renderTask = (task: Task, level = 0) => (
-    <div key={task.id} className={`${level > 0 ? 'ml-8 border-l-2 border-green-500 pl-4' : ''}`}>
-      <Card className="bg-gray-900 border-green-500 mb-4">
-        <CardHeader className="pb-3">
+    <div key={task.id} className={`${level > 0 ? 'ml-8 border-l-2 border-green-500 pl-4' : ''} mb-4`}>
+      {/* Interactive Task Component */}
+      <div className="mb-2">
+        <InteractiveTask
+          task={{
+            id: task.id,
+            title: task.title,
+            description: task.description || undefined,
+            completed: task.status === 'completed',
+            priority: task.priority,
+            due_date: task.due_date || undefined
+          }}
+          onToggle={handleTaskToggle}
+        />
+      </div>
+
+      {/* Additional Task Controls */}
+      <Card className="bg-gray-800 border-green-500/30">
+        <CardContent className="p-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {task.subtasks && task.subtasks.length > 0 && (
@@ -224,19 +269,8 @@ const Tasks = () => {
               ) : (
                 <User className="w-4 h-4 text-green-400" />
               )}
-              <div className="flex-1">
-                <CardTitle className="text-green-400 font-mono text-lg">{task.title}</CardTitle>
-                {task.description && (
-                  <CardDescription className="text-green-600 font-mono text-sm mt-1">
-                    {task.description}
-                  </CardDescription>
-                )}
-              </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge className={`${getPriorityColor(task.priority)} font-mono text-xs`}>
-                {task.priority.toUpperCase()}
-              </Badge>
               <Select value={task.status} onValueChange={(value) => handleStatusChange(task.id, value)}>
                 <SelectTrigger className="w-32 bg-black border-green-500 text-green-400 font-mono text-xs">
                   <SelectValue />
@@ -258,17 +292,14 @@ const Tasks = () => {
               </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between text-sm mt-2">
             <div className="flex items-center gap-4">
               <Badge className={`${getStatusColor(task.status)} font-mono text-xs`}>
                 {task.status.replace('_', ' ').toUpperCase()}
               </Badge>
-              {task.due_date && (
-                <div className="flex items-center gap-1 text-green-600 font-mono">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(task.due_date).toLocaleDateString()}
+              {task.subtasks && task.subtasks.length > 0 && (
+                <div className="text-green-600 font-mono text-sm">
+                  {task.subtasks.length} subtask{task.subtasks.length !== 1 ? 's' : ''}
                 </div>
               )}
             </div>
@@ -276,12 +307,6 @@ const Tasks = () => {
               {new Date(task.created_at).toLocaleDateString()}
             </div>
           </div>
-          
-          {task.subtasks && task.subtasks.length > 0 && (
-            <div className="mt-2 text-green-600 font-mono text-sm">
-              {task.subtasks.length} subtask{task.subtasks.length !== 1 ? 's' : ''}
-            </div>
-          )}
         </CardContent>
       </Card>
       
@@ -299,7 +324,7 @@ const Tasks = () => {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <CheckSquare className="w-8 h-8 text-green-500" />
-              <h1 className="text-3xl font-bold text-green-400 font-mono">TASK MANAGER</h1>
+              <h1 className="text-3xl font-bold text-green-400 font-mono">INTERACTIVE TASKS</h1>
             </div>
             <Button
               onClick={() => setIsCreating(true)}

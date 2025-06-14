@@ -48,7 +48,7 @@ serve(async (req) => {
     // Generate learning plan using AI
     const prompt = `Create a detailed learning plan for "${subject}" at ${difficulty} level. 
     Include 5-8 modules with titles, descriptions, and estimated time for each module.
-    Format as JSON with structure: { "modules": [{ "title": "", "description": "", "estimatedHours": 0 }] }`
+    Format as JSON with structure: { "modules": [{ "title": "", "description": "", "estimatedHours": 0, "resources": [""], "completed": false }] }`
 
     let aiResponse
     
@@ -108,17 +108,25 @@ serve(async (req) => {
       // Fallback to a default structure
       planData = {
         modules: [
-          { title: `Introduction to ${subject}`, description: `Learn the basics of ${subject}`, estimatedHours: 4 },
-          { title: `Core Concepts`, description: `Understand fundamental concepts`, estimatedHours: 8 },
-          { title: `Practical Applications`, description: `Apply knowledge in real scenarios`, estimatedHours: 12 },
-          { title: `Advanced Topics`, description: `Explore advanced techniques`, estimatedHours: 16 },
-          { title: `Project Work`, description: `Build a complete project`, estimatedHours: 20 }
+          { title: `Introduction to ${subject}`, description: `Learn the basics of ${subject}`, estimatedHours: 4, completed: false },
+          { title: `Core Concepts`, description: `Understand fundamental concepts`, estimatedHours: 8, completed: false },
+          { title: `Practical Applications`, description: `Apply knowledge in real scenarios`, estimatedHours: 12, completed: false },
+          { title: `Advanced Topics`, description: `Explore advanced techniques`, estimatedHours: 16, completed: false },
+          { title: `Project Work`, description: `Build a complete project`, estimatedHours: 20, completed: false }
         ]
       }
     }
 
+    // Add unique IDs to modules and ensure they have completed status
+    const modulesWithIds = planData.modules?.map((module: any, index: number) => ({
+      ...module,
+      id: `${crypto.randomUUID()}`,
+      completed: false,
+      estimatedHours: module.estimatedHours || 4
+    })) || []
+
     // Calculate estimated duration
-    const totalHours = planData.modules?.reduce((sum: number, module: any) => sum + (module.estimatedHours || 4), 0) || 40
+    const totalHours = modulesWithIds.reduce((sum: number, module: any) => sum + (module.estimatedHours || 4), 0)
     const estimatedDays = Math.ceil(totalHours / 2) // Assuming 2 hours per day
 
     // Create learning plan in database
@@ -131,7 +139,7 @@ serve(async (req) => {
         subject: subject,
         difficulty_level: difficulty,
         estimated_duration: estimatedDays,
-        plan_data: planData.modules || [],
+        plan_data: modulesWithIds,
         agent_generated: true,
         status: 'active'
       })
@@ -146,7 +154,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true,
         plan: newPlan,
-        totalModules: planData.modules?.length || 0,
+        totalModules: modulesWithIds.length,
         estimatedDays
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

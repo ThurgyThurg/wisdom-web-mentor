@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { GraduationCap, Plus, Play, Pause, RotateCcw, Bot, User, Calendar, Target } from 'lucide-react';
 import TerminalHeader from '@/components/TerminalHeader';
+import InteractiveLearningPlan from '@/components/InteractiveLearningPlan';
 
 interface LearningPlan {
   id: string;
@@ -144,6 +144,47 @@ const LearningPlans = () => {
       });
     } else {
       fetchPlans();
+      if (newProgress === 100) {
+        toast({
+          title: "CONGRATULATIONS! 🎉",
+          description: "Learning plan completed!",
+        });
+      }
+    }
+  };
+
+  const handleModuleToggle = async (planId: string, moduleId: string, completed: boolean) => {
+    // Update the plan_data in the database
+    const plan = plans.find(p => p.id === planId);
+    if (!plan) return;
+
+    const updatedModules = plan.plan_data.map(module => 
+      module.id === moduleId ? { ...module, completed } : module
+    );
+
+    const { error } = await supabase
+      .from('learning_plans')
+      .update({ 
+        plan_data: updatedModules,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', planId);
+
+    if (error) {
+      console.error('Error updating module:', error);
+      toast({
+        title: "ERROR",
+        description: "Failed to update module",
+        variant: "destructive",
+      });
+    } else {
+      fetchPlans();
+      if (completed) {
+        toast({
+          title: "MODULE COMPLETED! ✅",
+          description: "Great progress!",
+        });
+      }
     }
   };
 
@@ -192,6 +233,20 @@ const LearningPlans = () => {
     }
   };
 
+  // Transform plan data to include IDs for modules if they don't have them
+  const transformPlanData = (plan: LearningPlan) => {
+    const modules = plan.plan_data.map((module, index) => ({
+      ...module,
+      id: module.id || `${plan.id}-module-${index}`,
+      completed: module.completed || false
+    }));
+
+    return {
+      ...plan,
+      modules
+    };
+  };
+
   return (
     <div className="min-h-screen bg-black">
       <TerminalHeader />
@@ -200,7 +255,7 @@ const LearningPlans = () => {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <GraduationCap className="w-8 h-8 text-green-500" />
-              <h1 className="text-3xl font-bold text-green-400 font-mono">LEARNING PLANS</h1>
+              <h1 className="text-3xl font-bold text-green-400 font-mono">INTERACTIVE LEARNING</h1>
             </div>
             <div className="flex gap-3">
               <Button
@@ -303,89 +358,15 @@ const LearningPlans = () => {
             </Card>
           )}
 
-          {/* Plans Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Interactive Learning Plans */}
+          <div className="space-y-6">
             {plans.map((plan) => (
-              <Card key={plan.id} className="bg-gray-900 border-green-500 hover:border-green-400 transition-colors cursor-pointer" onClick={() => setSelectedPlan(plan)}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      {plan.agent_generated ? (
-                        <Bot className="w-4 h-4 text-blue-400" />
-                      ) : (
-                        <User className="w-4 h-4 text-green-400" />
-                      )}
-                      <div>
-                        <CardTitle className="text-green-400 font-mono text-lg">{plan.title}</CardTitle>
-                        <CardDescription className="text-green-600 font-mono text-sm">
-                          {plan.subject}
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {plan.description && (
-                    <p className="text-green-300 font-mono text-sm mb-3 line-clamp-2">
-                      {plan.description}
-                    </p>
-                  )}
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Badge className={`${getDifficultyColor(plan.difficulty_level)} font-mono text-xs`}>
-                        {plan.difficulty_level.toUpperCase()}
-                      </Badge>
-                      <Badge className={`${getStatusColor(plan.status)} font-mono text-xs`}>
-                        {plan.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs font-mono text-green-400">
-                        <span>PROGRESS</span>
-                        <span>{plan.progress}%</span>
-                      </div>
-                      <Progress value={plan.progress} className="h-2 bg-gray-700" />
-                    </div>
-                    
-                    <div className="flex items-center justify-between text-xs">
-                      {plan.estimated_duration && (
-                        <div className="flex items-center gap-1 text-green-600 font-mono">
-                          <Calendar className="w-3 h-3" />
-                          {plan.estimated_duration} days
-                        </div>
-                      )}
-                      <div className="text-green-600 font-mono">
-                        {new Date(plan.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-1 pt-2">
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStatusChange(plan.id, plan.status === 'active' ? 'paused' : 'active');
-                        }}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-mono text-xs"
-                      >
-                        {plan.status === 'active' ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleProgressUpdate(plan.id, 0);
-                        }}
-                        className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-black font-mono text-xs"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <InteractiveLearningPlan
+                key={plan.id}
+                plan={transformPlanData(plan)}
+                onModuleToggle={handleModuleToggle}
+                onProgressUpdate={handleProgressUpdate}
+              />
             ))}
           </div>
 
@@ -399,89 +380,6 @@ const LearningPlans = () => {
           )}
         </div>
       </div>
-
-      {/* Plan Detail Modal */}
-      {selectedPlan && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-900 border-green-500">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-green-400 font-mono text-2xl">{selectedPlan.title}</CardTitle>
-                  <CardDescription className="text-green-600 font-mono">
-                    {selectedPlan.subject} • {selectedPlan.difficulty_level}
-                  </CardDescription>
-                </div>
-                <Button
-                  onClick={() => setSelectedPlan(null)}
-                  variant="ghost"
-                  className="text-green-400 hover:text-green-300"
-                >
-                  ✕
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {selectedPlan.description && (
-                <div>
-                  <h3 className="text-green-400 font-mono font-semibold mb-2">DESCRIPTION</h3>
-                  <p className="text-green-300 font-mono">{selectedPlan.description}</p>
-                </div>
-              )}
-              
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 border border-green-500 rounded">
-                  <div className="text-green-400 font-mono text-sm">PROGRESS</div>
-                  <div className="text-green-300 font-mono text-xl">{selectedPlan.progress}%</div>
-                </div>
-                <div className="text-center p-3 border border-green-500 rounded">
-                  <div className="text-green-400 font-mono text-sm">STATUS</div>
-                  <div className="text-green-300 font-mono text-xl">{selectedPlan.status.toUpperCase()}</div>
-                </div>
-                <div className="text-center p-3 border border-green-500 rounded">
-                  <div className="text-green-400 font-mono text-sm">DURATION</div>
-                  <div className="text-green-300 font-mono text-xl">{selectedPlan.estimated_duration || 'N/A'}</div>
-                </div>
-                <div className="text-center p-3 border border-green-500 rounded">
-                  <div className="text-green-400 font-mono text-sm">LEVEL</div>
-                  <div className="text-green-300 font-mono text-xl">{selectedPlan.difficulty_level.toUpperCase()}</div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-green-400 font-mono">UPDATE PROGRESS</Label>
-                <div className="flex gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={selectedPlan.progress}
-                    onChange={(e) => handleProgressUpdate(selectedPlan.id, parseInt(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-green-400 font-mono w-12">{selectedPlan.progress}%</span>
-                </div>
-              </div>
-
-              {selectedPlan.plan_data && selectedPlan.plan_data.length > 0 && (
-                <div>
-                  <h3 className="text-green-400 font-mono font-semibold mb-4">LEARNING MODULES</h3>
-                  <div className="space-y-2">
-                    {selectedPlan.plan_data.map((module, index) => (
-                      <div key={index} className="p-3 border border-green-500 rounded bg-black">
-                        <div className="text-green-400 font-mono font-semibold">{module.title || `Module ${index + 1}`}</div>
-                        {module.description && (
-                          <div className="text-green-300 font-mono text-sm mt-1">{module.description}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 };
