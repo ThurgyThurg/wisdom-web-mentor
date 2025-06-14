@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { OpenAI } from "https://esm.sh/openai@4.47.1";
@@ -95,8 +96,13 @@ serve(async (req) => {
       const data = await pdf(new Uint8Array(fileBuffer));
       text = data.text;
     } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') { // DOCX
-      const result = await mammoth.extractRawText({ arrayBuffer: fileBuffer });
-      text = result.value;
+      try {
+        const result = await mammoth.extractRawText({ arrayBuffer: fileBuffer });
+        text = result.value;
+      } catch (mammothError) {
+        console.warn('Failed to process DOCX with mammoth, skipping:', mammothError);
+        return new Response(JSON.stringify({ message: 'DOCX processing is temporarily unavailable. Please try converting to PDF or TXT format.' }), { status: 415, headers: corsHeaders });
+      }
     } else if (fileType && fileType.startsWith('text/')) { // TXT
       text = new TextDecoder().decode(fileBuffer);
     } else {
