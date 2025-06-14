@@ -1,8 +1,7 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { OpenAI } from "https://esm.sh/openai@4.47.1";
-import { extractText } from "https://deno.land/x/pdf_extract@v0.5.4/mod.ts";
+import pdf from "npm:pdf-parse@1.1.1";
 import mammoth from "https://deno.land/x/mammoth@v1.0.1/mod.js";
 
 const corsHeaders = {
@@ -93,8 +92,8 @@ serve(async (req) => {
     console.log(`Processing file: ${fileName}, type: ${fileType}`);
 
     if (fileType === 'application/pdf') {
-      const pdfText = await extractText(new Uint8Array(fileBuffer));
-      text = pdfText.content;
+      const data = await pdf(new Uint8Array(fileBuffer));
+      text = data.text;
     } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') { // DOCX
       const result = await mammoth.extractRawText({ arrayBuffer: fileBuffer });
       text = result.value;
