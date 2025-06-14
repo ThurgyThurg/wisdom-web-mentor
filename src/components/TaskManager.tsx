@@ -30,6 +30,8 @@ interface Task {
   subtasks?: Task[];
 }
 
+type PriorityType = 'low' | 'medium' | 'high' | 'urgent';
+
 const TaskManager = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -42,11 +44,17 @@ const TaskManager = () => {
   const [filterPriority, setFilterPriority] = useState<string>('all');
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    title: string;
+    description: string;
+    priority: PriorityType;
+    due_date: Date | undefined;
+    parent_task_id: string;
+  }>({
     title: '',
     description: '',
-    priority: 'medium' as const,
-    due_date: undefined as Date | undefined,
+    priority: 'medium',
+    due_date: undefined,
     parent_task_id: ''
   });
 
@@ -78,8 +86,13 @@ const TaskManager = () => {
         variant: "destructive",
       });
     } else {
-      // Organize tasks with subtasks
-      const organizedTasks = organizeTasks(data || []);
+      // Organize tasks with subtasks and ensure proper typing
+      const typedTasks = (data || []).map(task => ({
+        ...task,
+        status: task.status as 'pending' | 'in_progress' | 'completed' | 'cancelled',
+        priority: task.priority as 'low' | 'medium' | 'high' | 'urgent'
+      }));
+      const organizedTasks = organizeTasks(typedTasks);
       setTasks(organizedTasks);
     }
     setLoading(false);
@@ -340,7 +353,7 @@ const TaskManager = () => {
           <Label className="text-green-300 font-mono">Priority</Label>
           <Select
             value={formData.priority}
-            onValueChange={(value: 'low' | 'medium' | 'high' | 'urgent') => 
+            onValueChange={(value: PriorityType) => 
               setFormData(prev => ({ ...prev, priority: value }))
             }
           >
