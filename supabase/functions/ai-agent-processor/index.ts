@@ -106,9 +106,41 @@ serve(async (req) => {
     }
     // --- End Agent Router Logic ---
 
+    // --- Document Retrieval for Research Agent ---
+    let documentContext = '';
+    if (agentType === 'research') {
+      console.log('Research agent selected. Querying documents...');
+      try {
+        const { data: queryData, error: queryError } = await supabaseClient.functions.invoke('query-documents', {
+          body: { query: message, limit: 5 },
+        });
+
+        if (queryError) {
+          console.error('Error querying documents:', queryError);
+          documentContext = "I tried to access your documents, but encountered an error. I will answer based on my general knowledge.";
+        } else if (queryData && queryData.results && queryData.results.length > 0) {
+          console.log(`Found ${queryData.results.length} relevant document chunks.`);
+          documentContext = "Context from user's documents:\n" +
+            queryData.results.map((r: any) => `- From document "${r.document_title}": ${r.chunk_text}`).join('\n');
+        } else {
+          console.log('No relevant documents found for query:', message);
+          documentContext = "I couldn't find any relevant information in your uploaded documents for this query. I will answer based on my general knowledge.";
+        }
+      } catch (e) {
+        console.error('Exception when invoking query-documents function:', e.message);
+        documentContext = "I tried to access your documents, but a system error occurred. I will answer based on my general knowledge.";
+      }
+    }
+    // --- End Document Retrieval ---
+
     // Define agent behaviors
     const agentPrompts = {
-      research: `You are a research assistant. Analyze the user's message and provide detailed research insights. If the user asks for research on a topic, break it down into key areas to investigate and suggest reliable sources.`,
+      research: `You are a research assistant. Your primary goal is to answer the user's question based on the context provided from their personal documents.
+If the provided context is relevant, synthesize it to form a comprehensive answer.
+If the context is not sufficient or relevant to the user's query, clearly state that you couldn't find an answer in their documents and then proceed to answer using your general knowledge.
+---
+${documentContext || "No context provided."}
+---`,
       task_breakdown: `You are a task breakdown specialist. Take the user's goal or task and break it down into smaller, actionable subtasks. Each subtask should be specific, measurable, and have a clear outcome. Respond with a list of tasks.`,
       learning_plan: `You are a learning plan creator. The user wants a learning plan. Your task is to generate a comprehensive learning plan based on their request.
 Respond with ONLY a single valid JSON object. Do not include any text before or after the JSON.
@@ -271,9 +303,12 @@ Base the plan on the user's request.`,
     
     let currentConversationId = conversationId;
     if (currentConversationId) {
-      await supabaseClient.from('chat_conversations').update({ messages: updatedHistory, updated_at: new Date().toISOString() }).eq('id', currentConversationId);
+      const {data: convData, error} = await supabaseClient.from('agent_conversations').update({ conversation_data: updatedHistory, updated_at: new Date().toISOString() }).eq('id', currentConversationId);
+      if(error){
+        console.log({error})
+      }
     } else {
-      const { data: newConv } = await supabaseClient.from('chat_conversations').insert({ user_id: user.id, messages: updatedHistory, title: message.substring(0, 50) }).select('id').single();
+      const { data: newConv } = await supabaseClient.from('agent_conversations').insert({ user_id: user.id, conversation_data: updatedHistory, agent_id: 'a4b1c7d2-9e3f-4a6b-8d1e-2c7f6b5a4d3c' }).select('id').single();
       currentConversationId = newConv?.id;
     }
 
