@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -85,13 +86,23 @@ const AgentChat = () => {
     } catch (err: any) {
       console.error("Error calling edge function:", err);
       console.error("Full error object:", JSON.stringify(err, null, 2));
-      const errorMessage = err?.context?.message || err.message || 'An error occurred.';
+      const errorMessage = err?.context?.error || err.message || 'An error occurred.';
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
-      toast({
-        title: "ERROR",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      
+      if (errorMessage.includes('No AI API key')) {
+        toast({
+          title: "Configuration Needed",
+          description: "Please configure your AI provider API key in the settings.",
+          variant: "destructive",
+          action: <ToastAction altText="Go to Settings" onClick={() => navigate('/settings')}>Settings</ToastAction>,
+        });
+      } else {
+        toast({
+          title: "ERROR",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -203,3 +214,4 @@ const AgentChat = () => {
 };
 
 export default AgentChat;
+
