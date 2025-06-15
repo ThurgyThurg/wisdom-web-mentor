@@ -42,7 +42,7 @@ const DocumentUpload = () => {
       .from('learning_resources')
       .select('*')
       .eq('user_id', user.id)
-      .eq('type', 'document')
+      .eq('type', 'Document') // Corrected from 'document' to 'Document' to match the insert
       .order('created_at', { ascending: false });
 
     if (error) {
