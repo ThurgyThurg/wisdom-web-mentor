@@ -84,7 +84,8 @@ const AgentChat = () => {
 
     } catch (err: any) {
       console.error("Error calling edge function:", err);
-      const errorMessage = err.message || 'An error occurred.';
+      console.error("Full error object:", JSON.stringify(err, null, 2));
+      const errorMessage = err?.context?.message || err.message || 'An error occurred.';
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${errorMessage}` }]);
       toast({
         title: "ERROR",

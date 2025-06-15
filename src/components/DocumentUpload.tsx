@@ -99,7 +99,7 @@ const DocumentUpload = () => {
         .insert({
           user_id: user.id,
           title: title || file.name,
-          type: 'document',
+          type: 'Document', // FIX: Was 'document', causing a check constraint violation.
           file_path: filePath,
           metadata: {
             file_type: file.type,
@@ -122,9 +122,10 @@ const DocumentUpload = () => {
 
       if (processError) {
         console.error('Processing error:', processError);
+        const description = processError?.context?.message || "Document uploaded but AI processing failed. You can try processing it again later.";
         toast({
           title: "Upload successful, processing failed",
-          description: "Document uploaded but AI processing failed. You can try processing it again later.",
+          description: description,
           variant: "destructive",
         });
       } else {
