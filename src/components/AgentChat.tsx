@@ -81,6 +81,12 @@ const AgentChat = () => {
           description: "The AI has created a new task plan.",
           action: <ToastAction altText="View Tasks" onClick={() => navigate('/tasks')}>View Tasks</ToastAction>,
         });
+      } else if (actionTaken === 'learning_plan_created') {
+        toast({
+          title: "Learning Plan Created!",
+          description: "The AI has generated a new learning plan for you.",
+          action: <ToastAction altText="View Plans" onClick={() => navigate('/learning-plans')}>View Plans</ToastAction>,
+        });
       }
 
     } catch (err: any) {

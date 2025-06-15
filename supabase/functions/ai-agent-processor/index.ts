@@ -110,7 +110,10 @@ serve(async (req) => {
     const agentPrompts = {
       research: `You are a research assistant. Analyze the user's message and provide detailed research insights. If the user asks for research on a topic, break it down into key areas to investigate and suggest reliable sources.`,
       task_breakdown: `You are a task breakdown specialist. Take the user's goal or task and break it down into smaller, actionable subtasks. Each subtask should be specific, measurable, and have a clear outcome. Respond with a list of tasks.`,
-      learning_plan: `You are a learning plan creator. Create comprehensive learning plans based on the user's subject or skill they want to learn. Include modules, timeline, and resources.`,
+      learning_plan: `You are a learning plan creator. The user wants a learning plan. Your task is to generate a comprehensive learning plan based on their request.
+Respond with ONLY a single valid JSON object. Do not include any text before or after the JSON.
+The JSON should have this structure: { "title": "Learning Plan for [Topic]", "subject": "[Topic]", "description": "A comprehensive plan...", "difficulty_level": "beginner" | "intermediate" | "advanced", "modules": [{ "title": "Module 1: ...", "description": "...", "estimatedHours": 2, "resources": ["resource 1"] }] }
+Base the plan on the user's request.`,
       note_taker: `You are a note-taking assistant. Help organize and structure information into clear, searchable notes. Extract key points and create summaries. Start your response with a title for the note.`,
       general_assistant: `You are a helpful AI assistant focused on learning and productivity. Provide clear, actionable advice and help users achieve their goals.`
     }
@@ -181,22 +184,9 @@ serve(async (req) => {
       throw new Error('No AI response received')
     }
     
-    // Update conversation history
-    const newUserMessage = { role: 'user', content: message };
-    const newAiMessage = { role: 'assistant', content: aiResponse };
-    const updatedHistory = [...history, newUserMessage, newAiMessage];
-    
-    let currentConversationId = conversationId;
-    if (currentConversationId) {
-      await supabaseClient.from('chat_conversations').update({ messages: updatedHistory, updated_at: new Date().toISOString() }).eq('id', currentConversationId);
-    } else {
-      const { data: newConv } = await supabaseClient.from('chat_conversations').insert({ user_id: user.id, messages: updatedHistory, title: message.substring(0, 50) }).select('id').single();
-      currentConversationId = newConv?.id;
-    }
-
-
     // Process the response based on agent type
     let actionTaken = 'response'
+    let responseToUser = aiResponse; // Default response
     
     if (agentType === 'note_taker' || message.toLowerCase().includes('save note') || message.toLowerCase().includes('create note')) {
       const lines = aiResponse.split('\n').filter(line => line.trim())
@@ -208,6 +198,7 @@ serve(async (req) => {
         .insert({ user_id: user.id, title, content, agent_generated: true, tags: ['ai-generated', agentType] })
       
       actionTaken = 'note_created'
+      responseToUser = "I've saved that as a note for you."
     } else if (agentType === 'task_breakdown' || message.toLowerCase().includes('break down') || message.toLowerCase().includes('subtasks')) {
       const tasks = aiResponse.split('\n')
         .filter(line => line.trim() && (line.includes('•') || line.includes('-') || /^\d+\./.test(line)))
@@ -231,10 +222,63 @@ serve(async (req) => {
       }
       
       actionTaken = 'tasks_created'
+      responseToUser = "I've created a new task plan based on your request."
+    } else if (agentType === 'learning_plan') {
+      try {
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON object found in AI response.");
+        const planData = JSON.parse(jsonMatch[0]);
+
+        const modulesWithIds = planData.modules?.map((module: any) => ({
+            ...module,
+            id: crypto.randomUUID(),
+            completed: false,
+        })) || [];
+        
+        const totalHours = modulesWithIds.reduce((sum: number, module: any) => sum + (module.estimatedHours || 0), 0);
+        const estimatedDays = Math.ceil(totalHours / 2); // Assuming 2 hours of study per day
+
+        const { error: insertError } = await supabaseClient
+            .from('learning_plans')
+            .insert({
+                user_id: user.id,
+                title: planData.title || `AI Plan for ${planData.subject}`,
+                description: planData.description || `An AI-generated learning plan.`,
+                subject: planData.subject,
+                difficulty_level: planData.difficulty_level || 'beginner',
+                estimated_duration: estimatedDays,
+                plan_data: modulesWithIds,
+                agent_generated: true,
+                status: 'active'
+            });
+        
+        if (insertError) throw insertError;
+        
+        actionTaken = 'learning_plan_created';
+        responseToUser = `I have created a new learning plan about "${planData.subject}". You can find it in the Learning Plans section.`;
+        
+      } catch(e) {
+          console.error('Failed to parse learning plan JSON or save to DB:', e.message);
+          actionTaken = 'response';
+          responseToUser = "I drafted a learning plan for you, but had trouble saving it as an interactive module. Here is the plan in text format:\n\n" + aiResponse;
+      }
+    }
+
+    // Update conversation history
+    const newUserMessage = { role: 'user', content: message };
+    const newAiMessage = { role: 'assistant', content: responseToUser };
+    const updatedHistory = [...history, newUserMessage, newAiMessage];
+    
+    let currentConversationId = conversationId;
+    if (currentConversationId) {
+      await supabaseClient.from('chat_conversations').update({ messages: updatedHistory, updated_at: new Date().toISOString() }).eq('id', currentConversationId);
+    } else {
+      const { data: newConv } = await supabaseClient.from('chat_conversations').insert({ user_id: user.id, messages: updatedHistory, title: message.substring(0, 50) }).select('id').single();
+      currentConversationId = newConv?.id;
     }
 
     return new Response(
-      JSON.stringify({ response: aiResponse, actionTaken, agentType, conversationId: currentConversationId }),
+      JSON.stringify({ response: responseToUser, actionTaken, agentType, conversationId: currentConversationId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
